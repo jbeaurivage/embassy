@@ -1,8 +1,10 @@
+#![allow(clippy::enum_variant_names)]
+#![allow(clippy::upper_case_acronyms)]
+
 use core::fmt::Debug;
 
 use lorawan_device::async_device::radio as device;
 
-#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum RadioError<BUS> {
@@ -289,6 +291,7 @@ pub struct CalibrationParams {
 }
 
 impl CalibrationParams {
+    #[allow(clippy::identity_op)]
     pub fn value(self) -> u8 {
         ((self.img_enable as u8) << 6)
             | ((self.adc_bulkp_enable as u8) << 5)

@@ -1,9 +1,9 @@
 #![allow(dead_code)]
+#![allow(clippy::too_many_arguments)]
 
 use embassy_time::{Duration, Timer};
-use embedded_hal::digital::v2::OutputPin;
-use embedded_hal_async::digital::Wait;
 use embedded_hal_async::spi::SpiBus;
+use super::Board;
 
 mod board_specific;
 pub mod mod_params;
@@ -26,14 +26,9 @@ const LORA_BANDWIDTHS: [Bandwidth; 3] = [Bandwidth::_125KHz, Bandwidth::_250KHz,
 const RADIO_WAKEUP_TIME: u32 = 3;
 
 /// Provides high-level access to Semtech SX126x-based boards
-pub struct LoRa<SPI, CTRL, WAIT> {
+pub struct LoRa<B, SPI> {
     spi: SPI,
-    cs: CTRL,
-    reset: CTRL,
-    antenna_rx: CTRL,
-    antenna_tx: CTRL,
-    dio1: WAIT,
-    busy: WAIT,
+    board: B,
     operating_mode: RadioMode,
     rx_continuous: bool,
     max_payload_length: u8,
@@ -45,22 +40,16 @@ pub struct LoRa<SPI, CTRL, WAIT> {
     frequency_error: u32,
 }
 
-impl<SPI, CTRL, WAIT, BUS> LoRa<SPI, CTRL, WAIT>
+impl<B, SPI, BUS> LoRa<B, SPI>
 where
+    B: Board,
     SPI: SpiBus<u8, Error = BUS>,
-    CTRL: OutputPin,
-    WAIT: Wait,
 {
     /// Builds and returns a new instance of the radio. Only one instance of the radio should exist at a time ()
-    pub fn new(spi: SPI, cs: CTRL, reset: CTRL, antenna_rx: CTRL, antenna_tx: CTRL, dio1: WAIT, busy: WAIT) -> Self {
+    pub fn new(spi: SPI, board: B) -> Self {
         Self {
             spi,
-            cs,
-            reset,
-            antenna_rx,
-            antenna_tx,
-            dio1,
-            busy,
+            board,
             operating_mode: RadioMode::Sleep,
             rx_continuous: false,
             max_payload_length: 0xFFu8,
@@ -207,10 +196,10 @@ where
         }
 
         let modulation_params = ModulationParams {
-            spreading_factor: spreading_factor,
-            bandwidth: bandwidth,
-            coding_rate: coding_rate,
-            low_data_rate_optimize: low_data_rate_optimize,
+            spreading_factor,
+            bandwidth,
+            coding_rate,
+            low_data_rate_optimize,
         };
 
         let mut preamble_length_final = preamble_length;
@@ -224,8 +213,8 @@ where
             preamble_length: preamble_length_final,
             implicit_header: fixed_len,
             payload_length: self.max_payload_length,
-            crc_on: crc_on,
-            iq_inverted: iq_inverted,
+            crc_on,
+            iq_inverted,
         };
 
         self.modulation_params = Some(modulation_params);
@@ -282,10 +271,10 @@ where
         }
 
         let modulation_params = ModulationParams {
-            spreading_factor: spreading_factor,
-            bandwidth: bandwidth,
-            coding_rate: coding_rate,
-            low_data_rate_optimize: low_data_rate_optimize,
+            spreading_factor,
+            bandwidth,
+            coding_rate,
+            low_data_rate_optimize,
         };
 
         let mut preamble_length_final = preamble_length;
@@ -299,8 +288,8 @@ where
             preamble_length: preamble_length_final,
             implicit_header: fixed_len,
             payload_length: self.max_payload_length,
-            crc_on: crc_on,
-            iq_inverted: iq_inverted,
+            crc_on,
+            iq_inverted,
         };
 
         self.modulation_params = Some(modulation_params);
@@ -329,7 +318,7 @@ where
 
     /// Check if the given RF frequency is supported by the hardware [true: supported, false: unsupported]
     pub async fn check_rf_frequency(&mut self, frequency: u32) -> Result<bool, RadioError<BUS>> {
-        Ok(self.brd_check_rf_frequency(frequency).await?)
+        self.brd_check_rf_frequency(frequency).await
     }
 
     /// Computes the packet time on air in ms for the given payload for a LoRa modem (can only be called once set_rx_config or set_tx_config have been called)
@@ -501,6 +490,7 @@ where
     }
 
     /// Process the radio irq
+    #[allow(clippy::if_same_then_else)]
     pub async fn process_irq(
         &mut self,
         receiving_buffer: Option<&mut [u8]>,
@@ -520,7 +510,7 @@ where
                 st.chip_mode
             );
 
-            self.dio1.wait_for_high().await.map_err(|_| DIO1)?;
+            self.board.wait_for_dio1().await.map_err(|_| DIO1)?;
             let operating_mode = self.brd_get_operating_mode();
             let irq_flags = self.sub_get_irq_status().await?;
             self.sub_clear_irq_status(irq_flags).await?;
@@ -724,7 +714,7 @@ where
             + 12;
 
         if spreading_factor.value() <= 6 {
-            intermediate = intermediate + 2;
+            intermediate += 2;
         }
 
         (((4 * intermediate) + 1) * (1 << (spreading_factor.value() - 2))) as u32

@@ -1,22 +1,20 @@
 use embassy_time::{Duration, Timer};
-use embedded_hal::digital::v2::OutputPin;
-use embedded_hal_async::digital::Wait;
 use embedded_hal_async::spi::SpiBus;
 
 use super::mod_params::RadioError::*;
 use super::mod_params::*;
 use super::LoRa;
+use crate::sx126x::{AntennaDirection, Board};
 
 // Defines the time required for the TCXO to wakeup [ms].
 const BRD_TCXO_WAKEUP_TIME: u32 = 10;
 
 // Provides board-specific functionality for Semtech SX126x-based boards.
 
-impl<SPI, CTRL, WAIT, BUS> LoRa<SPI, CTRL, WAIT>
+impl<B, SPI, BUS> LoRa<B, SPI>
 where
+    B: Board,
     SPI: SpiBus<u8, Error = BUS>,
-    CTRL: OutputPin,
-    WAIT: Wait,
 {
     // De-initialize the radio I/Os pins interface.  Useful when going into MCU low power modes.
     pub(super) async fn brd_io_deinit(&mut self) -> Result<(), RadioError<BUS>> {
@@ -45,25 +43,25 @@ where
     // Hardware reset of the radio
     pub(super) async fn brd_reset(&mut self) -> Result<(), RadioError<BUS>> {
         Timer::after(Duration::from_millis(10)).await;
-        self.reset.set_low().map_err(|_| Reset)?;
+        self.board.set_reset_low().map_err(|_| Reset)?;
         Timer::after(Duration::from_millis(20)).await;
-        self.reset.set_high().map_err(|_| Reset)?;
+        self.board.set_reset_high().map_err(|_| Reset)?;
         Timer::after(Duration::from_millis(10)).await;
         Ok(())
     }
 
     // Wait while the busy pin is high
     pub(super) async fn brd_wait_on_busy(&mut self) -> Result<(), RadioError<BUS>> {
-        self.busy.wait_for_low().await.map_err(|_| Busy)?;
+        self.board.wait_for_busy().await.map_err(|_| Busy)?;
         Ok(())
     }
 
     // Wake up the radio
     pub(super) async fn brd_wakeup(&mut self) -> Result<(), RadioError<BUS>> {
-        self.cs.set_low().map_err(|_| CS)?;
+        self.board.set_cs_low().map_err(|_| CS)?;
         self.spi.write(&[OpCode::GetStatus.value()]).await.map_err(SPI)?;
         self.spi.write(&[0x00]).await.map_err(SPI)?;
-        self.cs.set_high().map_err(|_| CS)?;
+        self.board.set_cs_high().map_err(|_| CS)?;
 
         self.brd_wait_on_busy().await?;
         self.brd_set_operating_mode(RadioMode::StandbyRC);
@@ -74,10 +72,10 @@ where
     pub(super) async fn brd_write_command(&mut self, op_code: OpCode, buffer: &[u8]) -> Result<(), RadioError<BUS>> {
         self.sub_check_device_ready().await?;
 
-        self.cs.set_low().map_err(|_| CS)?;
+        self.board.set_cs_low().map_err(|_| CS)?;
         self.spi.write(&[op_code.value()]).await.map_err(SPI)?;
         self.spi.write(buffer).await.map_err(SPI)?;
-        self.cs.set_high().map_err(|_| CS)?;
+        self.board.set_cs_high().map_err(|_| CS)?;
 
         if op_code != OpCode::SetSleep {
             self.brd_wait_on_busy().await?;
@@ -92,14 +90,16 @@ where
 
         self.sub_check_device_ready().await?;
 
-        self.cs.set_low().map_err(|_| CS)?;
+        self.board.set_cs_low().map_err(|_| CS)?;
         self.spi.write(&[op_code.value()]).await.map_err(SPI)?;
         self.spi.transfer(&mut status, &[0x00]).await.map_err(SPI)?;
-        for i in 0..buffer.len() {
+
+        for byte in buffer.iter_mut() {
             self.spi.transfer(&mut input, &[0x00]).await.map_err(SPI)?;
-            buffer[i] = input[0];
+            *byte = input[0];
         }
-        self.cs.set_high().map_err(|_| CS)?;
+
+        self.board.set_cs_high().map_err(|_| CS)?;
 
         self.brd_wait_on_busy().await?;
 
@@ -114,7 +114,7 @@ where
     ) -> Result<(), RadioError<BUS>> {
         self.sub_check_device_ready().await?;
 
-        self.cs.set_low().map_err(|_| CS)?;
+        self.board.set_cs_low().map_err(|_| CS)?;
         self.spi.write(&[OpCode::WriteRegister.value()]).await.map_err(SPI)?;
         self.spi
             .write(&[
@@ -124,7 +124,7 @@ where
             .await
             .map_err(SPI)?;
         self.spi.write(buffer).await.map_err(SPI)?;
-        self.cs.set_high().map_err(|_| CS)?;
+        self.board.set_cs_high().map_err(|_| CS)?;
 
         self.brd_wait_on_busy().await?;
         Ok(())
@@ -140,7 +140,7 @@ where
 
         self.sub_check_device_ready().await?;
 
-        self.cs.set_low().map_err(|_| CS)?;
+        self.board.set_cs_low().map_err(|_| CS)?;
         self.spi.write(&[OpCode::ReadRegister.value()]).await.map_err(SPI)?;
         self.spi
             .write(&[
@@ -150,11 +150,13 @@ where
             ])
             .await
             .map_err(SPI)?;
-        for i in 0..buffer.len() {
+
+        for byte in buffer.iter_mut() {
             self.spi.transfer(&mut input, &[0x00]).await.map_err(SPI)?;
-            buffer[i] = input[0];
+            *byte = input[0];
         }
-        self.cs.set_high().map_err(|_| CS)?;
+
+        self.board.set_cs_high().map_err(|_| CS)?;
 
         self.brd_wait_on_busy().await?;
         Ok(())
@@ -164,11 +166,11 @@ where
     pub(super) async fn brd_write_buffer(&mut self, offset: u8, buffer: &[u8]) -> Result<(), RadioError<BUS>> {
         self.sub_check_device_ready().await?;
 
-        self.cs.set_low().map_err(|_| CS)?;
+        self.board.set_cs_low().map_err(|_| CS)?;
         self.spi.write(&[OpCode::WriteBuffer.value()]).await.map_err(SPI)?;
         self.spi.write(&[offset]).await.map_err(SPI)?;
         self.spi.write(buffer).await.map_err(SPI)?;
-        self.cs.set_high().map_err(|_| CS)?;
+        self.board.set_cs_high().map_err(|_| CS)?;
 
         self.brd_wait_on_busy().await?;
         Ok(())
@@ -180,15 +182,17 @@ where
 
         self.sub_check_device_ready().await?;
 
-        self.cs.set_low().map_err(|_| CS)?;
+        self.board.set_cs_low().map_err(|_| CS)?;
         self.spi.write(&[OpCode::ReadBuffer.value()]).await.map_err(SPI)?;
         self.spi.write(&[offset]).await.map_err(SPI)?;
         self.spi.write(&[0x00]).await.map_err(SPI)?;
-        for i in 0..buffer.len() {
+
+        for byte in buffer.iter_mut() {
             self.spi.transfer(&mut input, &[0x00]).await.map_err(SPI)?;
-            buffer[i] = input[0];
+            *byte = input[0];
         }
-        self.cs.set_high().map_err(|_| CS)?;
+
+        self.board.set_cs_high().map_err(|_| CS)?;
 
         self.brd_wait_on_busy().await?;
         Ok(())
@@ -207,22 +211,22 @@ where
 
     // Quiesce the antenna(s).
     pub(super) fn brd_ant_sleep(&mut self) -> Result<(), RadioError<BUS>> {
-        self.antenna_tx.set_low().map_err(|_| AntTx)?;
-        self.antenna_rx.set_low().map_err(|_| AntRx)?;
+        self.board.disable_antenna(AntennaDirection::Rx).map_err(|_| AntTx)?;
+        self.board.disable_antenna(AntennaDirection::Tx).map_err(|_| AntRx)?;
         Ok(())
     }
 
     // Prepare the antenna(s) for a receive operation
     pub(super) fn brd_ant_set_rx(&mut self) -> Result<(), RadioError<BUS>> {
-        self.antenna_tx.set_low().map_err(|_| AntTx)?;
-        self.antenna_rx.set_high().map_err(|_| AntRx)?;
+        self.board.disable_antenna(AntennaDirection::Tx).map_err(|_| AntRx)?;
+        self.board.enable_antenna(AntennaDirection::Rx).map_err(|_| AntTx)?;
         Ok(())
     }
 
     // Prepare the antenna(s) for a send operation
     pub(super) fn brd_ant_set_tx(&mut self) -> Result<(), RadioError<BUS>> {
-        self.antenna_rx.set_low().map_err(|_| AntRx)?;
-        self.antenna_tx.set_high().map_err(|_| AntTx)?;
+        self.board.disable_antenna(AntennaDirection::Rx).map_err(|_| AntRx)?;
+        self.board.enable_antenna(AntennaDirection::Tx).map_err(|_| AntTx)?;
         Ok(())
     }
 

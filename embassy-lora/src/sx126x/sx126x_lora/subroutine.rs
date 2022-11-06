@@ -1,9 +1,8 @@
-use embedded_hal::digital::v2::OutputPin;
-use embedded_hal_async::digital::Wait;
 use embedded_hal_async::spi::SpiBus;
 
 use super::mod_params::*;
 use super::LoRa;
+use crate::sx126x::Board;
 
 // Internal frequency of the radio
 const SX126X_XTAL_FREQ: u32 = 32000000;
@@ -19,11 +18,10 @@ const SX126X_MAX_LORA_SYMB_NUM_TIMEOUT: u8 = 248;
 
 // Provides board-specific functionality for Semtech SX126x-based boards
 
-impl<SPI, CTRL, WAIT, BUS> LoRa<SPI, CTRL, WAIT>
+impl<B, SPI, BUS> LoRa<B, SPI>
 where
+    B: Board,
     SPI: SpiBus<u8, Error = BUS>,
-    CTRL: OutputPin,
-    WAIT: Wait,
 {
     // Initialize the radio driver
     pub(super) async fn sub_init(&mut self) -> Result<(), RadioError<BUS>> {
@@ -439,25 +437,18 @@ where
                 self.sub_set_pa_config(0x04, 0x00, 0x01, 0x01).await?;
             }
 
-            if power >= 14 {
-                power = 14;
-            } else if power < -17 {
-                power = -17;
-            }
+            power = power.clamp(-17,14);
+
         } else {
             // Provide better resistance of the SX1262 Tx to antenna mismatch (see DS_SX1261-2_V1.2 datasheet chapter 15.2)
             let mut tx_clamp_cfg = [0x00u8];
             self.brd_read_registers(Register::TxClampCfg, &mut tx_clamp_cfg).await?;
-            tx_clamp_cfg[0] = tx_clamp_cfg[0] | (0x0F << 1);
+            tx_clamp_cfg[0] |= 0x0F << 1;
             self.brd_write_registers(Register::TxClampCfg, &tx_clamp_cfg).await?;
 
             self.sub_set_pa_config(0x04, 0x07, 0x00, 0x01).await?;
 
-            if power > 22 {
-                power = 22;
-            } else if power < -9 {
-                power = -9;
-            }
+            power = power.clamp(-9, 22);
         }
 
         // power conversion of negative number from i8 to u8 ???

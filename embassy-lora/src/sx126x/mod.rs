@@ -1,8 +1,6 @@
 use core::future::Future;
 
 use defmt::Format;
-use embedded_hal::digital::v2::OutputPin;
-use embedded_hal_async::digital::Wait;
 use embedded_hal_async::spi::*;
 use lorawan_device::async_device::radio::{PhyRxTx, RfConfig, RxQuality, TxConfig};
 use lorawan_device::async_device::Timings;
@@ -12,46 +10,62 @@ use sx126x_lora::LoRa;
 
 use self::sx126x_lora::mod_params::RadioError;
 
-/// Semtech Sx126x LoRa peripheral
-pub struct Sx126xRadio<SPI, CTRL, WAIT, BUS>
-where
-    SPI: SpiBus<u8, Error = BUS> + 'static,
-    CTRL: OutputPin + 'static,
-    WAIT: Wait + 'static,
-    BUS: Error + Format + 'static,
-{
-    pub lora: LoRa<SPI, CTRL, WAIT>,
+pub enum AntennaDirection {
+    Rx,
+    Tx,
 }
 
-impl<SPI, CTRL, WAIT, BUS> Sx126xRadio<SPI, CTRL, WAIT, BUS>
+pub trait Board {
+    type OutputError;
+    fn set_cs_high(&mut self) -> Result<(), Self::OutputError>;
+    fn set_cs_low(&mut self) -> Result<(), Self::OutputError>;
+    fn set_reset_high(&mut self) -> Result<(), Self::OutputError>;
+    fn set_reset_low(&mut self) -> Result<(), Self::OutputError>;
+    fn enable_antenna(&mut self, dir: AntennaDirection) -> Result<(), Self::OutputError>;
+    fn disable_antenna(&mut self, dir: AntennaDirection) -> Result<(), Self::OutputError>;
+
+    type WaitError;
+    type WaitForDioFuture<'a>: Future<Output = Result<(), Self::WaitError>>
+    where
+        Self: 'a;
+
+    fn wait_for_dio1(&mut self) -> Self::WaitForDioFuture<'_>;
+
+    type WaitForBusyFuture<'a>: Future<Output = Result<(), Self::WaitError>>
+    where
+        Self: 'a;
+
+    fn wait_for_busy(&mut self) -> Self::WaitForBusyFuture<'_>;
+}
+
+/// Semtech Sx126x LoRa peripheral
+pub struct Sx126xRadio<B, SPI, BUS>
 where
+    B: Board,
     SPI: SpiBus<u8, Error = BUS> + 'static,
-    CTRL: OutputPin + 'static,
-    WAIT: Wait + 'static,
     BUS: Error + Format + 'static,
 {
-    pub async fn new(
-        spi: SPI,
-        cs: CTRL,
-        reset: CTRL,
-        antenna_rx: CTRL,
-        antenna_tx: CTRL,
-        dio1: WAIT,
-        busy: WAIT,
-        enable_public_network: bool,
-    ) -> Result<Self, RadioError<BUS>> {
-        let mut lora = LoRa::new(spi, cs, reset, antenna_rx, antenna_tx, dio1, busy);
+    pub lora: LoRa<B, SPI>,
+}
+
+impl<B, SPI, BUS> Sx126xRadio<B, SPI, BUS>
+where
+    B: Board,
+    SPI: SpiBus<u8, Error = BUS> + 'static,
+    BUS: Error + Format + 'static,
+{
+    pub async fn new(spi: SPI, board: B, enable_public_network: bool) -> Result<Self, RadioError<BUS>> {
+        let mut lora = LoRa::new(spi, board);
         lora.init().await?;
         lora.set_lora_modem(enable_public_network).await?;
         Ok(Self { lora })
     }
 }
 
-impl<SPI, CTRL, WAIT, BUS> Timings for Sx126xRadio<SPI, CTRL, WAIT, BUS>
+impl<B, SPI, BUS> Timings for Sx126xRadio<B, SPI, BUS>
 where
+    B: Board,
     SPI: SpiBus<u8, Error = BUS> + 'static,
-    CTRL: OutputPin + 'static,
-    WAIT: Wait + 'static,
     BUS: Error + Format + 'static,
 {
     fn get_rx_window_offset_ms(&self) -> i32 {
@@ -62,20 +76,18 @@ where
     }
 }
 
-impl<SPI, CTRL, WAIT, BUS> PhyRxTx for Sx126xRadio<SPI, CTRL, WAIT, BUS>
+impl<B, SPI, BUS> PhyRxTx for Sx126xRadio<B, SPI, BUS>
 where
+    B: Board,
     SPI: SpiBus<u8, Error = BUS> + 'static,
-    CTRL: OutputPin + 'static,
-    WAIT: Wait + 'static,
     BUS: Error + Format + 'static,
 {
     type PhyError = RadioError<BUS>;
 
     type TxFuture<'m> = impl Future<Output = Result<u32, Self::PhyError>> + 'm
     where
+        B: 'm,
         SPI: 'm,
-        CTRL: 'm,
-        WAIT: 'm,
         BUS: 'm;
 
     fn tx<'m>(&'m mut self, config: TxConfig, buffer: &'m [u8]) -> Self::TxFuture<'m> {
@@ -100,15 +112,14 @@ where
             self.lora.send(buffer, 0xffffff).await?;
             self.lora.process_irq(None, None, None).await?;
             trace!("TX DONE");
-            return Ok(0);
+            Ok(0)
         }
     }
 
     type RxFuture<'m> = impl Future<Output = Result<(usize, RxQuality), Self::PhyError>> + 'm
     where
+        B: 'm,
         SPI: 'm,
-        CTRL: 'm,
-        WAIT: 'm,
         BUS: 'm;
 
     fn rx<'m>(&'m mut self, config: RfConfig, receiving_buffer: &'m mut [u8]) -> Self::RxFuture<'m> {
@@ -142,9 +153,9 @@ where
             let packet_status = self.lora.get_latest_packet_status();
             let mut rssi = 0i16;
             let mut snr = 0i8;
-            if packet_status.is_some() {
-                rssi = packet_status.unwrap().rssi as i16;
-                snr = packet_status.unwrap().snr;
+            if let Some(s) = packet_status {
+                rssi = s.rssi as i16;
+                snr = s.snr;
             }
 
             Ok((received_len as usize, RxQuality::new(rssi, snr)))
