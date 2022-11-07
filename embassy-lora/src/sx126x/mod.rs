@@ -10,32 +10,29 @@ use sx126x_lora::LoRa;
 
 use self::sx126x_lora::mod_params::RadioError;
 
-pub enum AntennaDirection {
-    Rx,
-    Tx,
-}
-
 pub trait Board {
     type OutputError;
     fn set_cs_high(&mut self) -> Result<(), Self::OutputError>;
     fn set_cs_low(&mut self) -> Result<(), Self::OutputError>;
     fn set_reset_high(&mut self) -> Result<(), Self::OutputError>;
     fn set_reset_low(&mut self) -> Result<(), Self::OutputError>;
-    fn enable_antenna(&mut self, dir: AntennaDirection) -> Result<(), Self::OutputError>;
-    fn disable_antenna(&mut self, dir: AntennaDirection) -> Result<(), Self::OutputError>;
+    fn antenna_tx(&mut self) -> Result<(), Self::OutputError>;
+    fn antenna_rx(&mut self) -> Result<(), Self::OutputError>;
+    fn antenna_sleep(&mut self) -> Result<(), Self::OutputError>;
 
-    type WaitError;
-    type WaitForDioFuture<'a>: Future<Output = Result<(), Self::WaitError>>
+    type WaitForDioError;
+    type WaitForDioFuture<'a>: Future<Output = Result<(), Self::WaitForDioError>>
     where
         Self: 'a;
 
-    fn wait_for_dio1(&mut self) -> Self::WaitForDioFuture<'_>;
+    fn wait_for_dio1_high(&mut self) -> Self::WaitForDioFuture<'_>;
 
-    type WaitForBusyFuture<'a>: Future<Output = Result<(), Self::WaitError>>
+    type WaitForBusyError;
+    type WaitForBusyFuture<'a>: Future<Output = Result<(), Self::WaitForBusyError>>
     where
         Self: 'a;
 
-    fn wait_for_busy(&mut self) -> Self::WaitForBusyFuture<'_>;
+    fn wait_for_busy_low(&mut self) -> Self::WaitForBusyFuture<'_>;
 }
 
 /// Semtech Sx126x LoRa peripheral

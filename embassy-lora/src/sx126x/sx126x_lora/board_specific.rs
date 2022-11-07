@@ -4,7 +4,7 @@ use embedded_hal_async::spi::SpiBus;
 use super::mod_params::RadioError::*;
 use super::mod_params::*;
 use super::LoRa;
-use crate::sx126x::{AntennaDirection, Board};
+use crate::sx126x::Board;
 
 // Defines the time required for the TCXO to wakeup [ms].
 const BRD_TCXO_WAKEUP_TIME: u32 = 10;
@@ -52,7 +52,7 @@ where
 
     // Wait while the busy pin is high
     pub(super) async fn brd_wait_on_busy(&mut self) -> Result<(), RadioError<BUS>> {
-        self.board.wait_for_busy().await.map_err(|_| Busy)?;
+        self.board.wait_for_busy_low().await.map_err(|_| Busy)?;
         Ok(())
     }
 
@@ -211,22 +211,19 @@ where
 
     // Quiesce the antenna(s).
     pub(super) fn brd_ant_sleep(&mut self) -> Result<(), RadioError<BUS>> {
-        self.board.disable_antenna(AntennaDirection::Rx).map_err(|_| AntTx)?;
-        self.board.disable_antenna(AntennaDirection::Tx).map_err(|_| AntRx)?;
+        self.board.antenna_sleep().map_err(|_| AntSleep)?;
         Ok(())
     }
 
     // Prepare the antenna(s) for a receive operation
     pub(super) fn brd_ant_set_rx(&mut self) -> Result<(), RadioError<BUS>> {
-        self.board.disable_antenna(AntennaDirection::Tx).map_err(|_| AntRx)?;
-        self.board.enable_antenna(AntennaDirection::Rx).map_err(|_| AntTx)?;
+        self.board.antenna_rx().map_err(|_| AntRx)?;
         Ok(())
     }
 
     // Prepare the antenna(s) for a send operation
     pub(super) fn brd_ant_set_tx(&mut self) -> Result<(), RadioError<BUS>> {
-        self.board.disable_antenna(AntennaDirection::Rx).map_err(|_| AntRx)?;
-        self.board.enable_antenna(AntennaDirection::Tx).map_err(|_| AntTx)?;
+        self.board.antenna_tx().map_err(|_| AntTx)?;
         Ok(())
     }
 

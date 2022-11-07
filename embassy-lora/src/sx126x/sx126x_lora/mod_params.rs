@@ -11,6 +11,7 @@ pub enum RadioError<BUS> {
     SPI(BUS),
     CS,
     Reset,
+    AntSleep,
     AntRx,
     AntTx,
     Busy,

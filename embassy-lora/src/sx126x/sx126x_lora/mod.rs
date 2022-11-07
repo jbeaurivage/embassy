@@ -510,7 +510,7 @@ where
                 st.chip_mode
             );
 
-            self.board.wait_for_dio1().await.map_err(|_| DIO1)?;
+            self.board.wait_for_dio1_high().await.map_err(|_| DIO1)?;
             let operating_mode = self.brd_get_operating_mode();
             let irq_flags = self.sub_get_irq_status().await?;
             self.sub_clear_irq_status(irq_flags).await?;
