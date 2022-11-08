@@ -22,6 +22,13 @@ pub struct LoraTimer {
 }
 
 #[cfg(feature = "time")]
+impl Default for LoraTimer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "time")]
 impl LoraTimer {
     pub fn new() -> Self {
         Self { start: Instant::now() }
@@ -35,12 +42,12 @@ impl lorawan_device::async_device::radio::Timer for LoraTimer {
     }
 
     type AtFuture<'m> = impl core::future::Future<Output = ()> + 'm;
-    fn at<'m>(&'m mut self, millis: u64) -> Self::AtFuture<'m> {
+    fn at(&mut self, millis: u64) -> Self::AtFuture<'_> {
         Timer::at(self.start + Duration::from_millis(millis))
     }
 
     type DelayFuture<'m> = impl core::future::Future<Output = ()> + 'm;
-    fn delay_ms<'m>(&'m mut self, millis: u64) -> Self::DelayFuture<'m> {
+    fn delay_ms(&mut self, millis: u64) -> Self::DelayFuture<'_> {
         Timer::after(Duration::from_millis(millis))
     }
 }

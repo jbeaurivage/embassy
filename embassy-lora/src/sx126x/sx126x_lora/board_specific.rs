@@ -1,10 +1,9 @@
-use embassy_time::{Duration, Timer};
 use embedded_hal_async::spi::SpiBus;
 
 use super::mod_params::RadioError::*;
 use super::mod_params::*;
 use super::LoRa;
-use crate::sx126x::Board;
+use crate::sx126x::{get_duration, Board, Duration};
 
 // Defines the time required for the TCXO to wakeup [ms].
 const BRD_TCXO_WAKEUP_TIME: u32 = 10;
@@ -16,6 +15,20 @@ where
     B: Board,
     SPI: SpiBus<u8, Error = BUS>,
 {
+    /// With the `time` feature enabled, an implementation based on `embassy_time` is provided for you.
+    #[cfg(feature = "time")]
+    #[inline]
+    pub(super) async fn wait(&mut self, duration: Duration) {
+        embassy_time::Timer::after(duration).await;
+    }
+
+    /// With the `time` feature disabled, the underlying `Board` supplies the `wait` method
+    #[cfg(not(feature = "time"))]
+    #[inline]
+    pub(super) async fn wait(&mut self, duration: Duration) {
+        self.board.wait(duration).await;
+    }
+
     // De-initialize the radio I/Os pins interface.  Useful when going into MCU low power modes.
     pub(super) async fn brd_io_deinit(&mut self) -> Result<(), RadioError<BUS>> {
         Ok(()) // no operation currently
@@ -42,11 +55,11 @@ where
 
     // Hardware reset of the radio
     pub(super) async fn brd_reset(&mut self) -> Result<(), RadioError<BUS>> {
-        Timer::after(Duration::from_millis(10)).await;
+        self.wait(get_duration(10)).await;
         self.board.set_reset_low().map_err(|_| Reset)?;
-        Timer::after(Duration::from_millis(20)).await;
+        self.wait(get_duration(20)).await;
         self.board.set_reset_high().map_err(|_| Reset)?;
-        Timer::after(Duration::from_millis(10)).await;
+        self.wait(get_duration(10)).await;
         Ok(())
     }
 

@@ -385,6 +385,7 @@ where
             Self::timeout_2(timeout),
             Self::timeout_3(timeout),
         ];
+
         self.brd_write_command(OpCode::SetTCXOMode, &buffer).await?;
 
         Ok(())
@@ -437,8 +438,7 @@ where
                 self.sub_set_pa_config(0x04, 0x00, 0x01, 0x01).await?;
             }
 
-            power = power.clamp(-17,14);
-
+            power = power.clamp(-17, 14);
         } else {
             // Provide better resistance of the SX1262 Tx to antenna mismatch (see DS_SX1261-2_V1.2 datasheet chapter 15.2)
             let mut tx_clamp_cfg = [0x00u8];

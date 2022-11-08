@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 #![allow(clippy::too_many_arguments)]
 
-use embassy_time::{Duration, Timer};
 use embedded_hal_async::spi::SpiBus;
-use super::Board;
+
+use crate::sx126x::{get_duration, Board};
 
 mod board_specific;
 pub mod mod_params;
@@ -76,6 +76,7 @@ where
             IrqMask::None.value(),
         )
         .await?;
+
         self.add_register_to_retention_list(Register::RxGain.addr()).await?;
         self.add_register_to_retention_list(Register::TxModulation.addr())
             .await?;
@@ -386,7 +387,7 @@ where
             warm_start: true,
         })
         .await?;
-        Timer::after(Duration::from_millis(2)).await;
+        self.wait(get_duration(2)).await;
         Ok(())
     }
 
@@ -640,8 +641,11 @@ where
         // Read the address and registers already added to the list
         self.brd_read_registers(Register::RetentionList, &mut buffer).await?;
 
+        defmt::dbg!(buffer);
+
         let number_of_registers = buffer[0];
         for i in 0..number_of_registers {
+            // TODO overflows here!!
             if register_address
                 == ((buffer[(1 + (2 * i)) as usize] as u16) << 8) | (buffer[(2 + (2 * i)) as usize] as u16)
             {

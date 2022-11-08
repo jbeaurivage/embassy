@@ -1,6 +1,33 @@
 use core::future::Future;
 
+#[cfg(feature = "defmt")]
 use defmt::Format;
+
+#[cfg(not(feature = "defmt"))]
+/// Dummy trait to make builds work when `defmt` feature is off. A blanket impl is provided for all types.
+pub trait Format {}
+#[cfg(not(feature = "defmt"))]
+impl<T> Format for T {}
+
+#[cfg(all(not(feature = "time"), not(feature = "fugit")))]
+compile_error!("Must specify at least one of `time` or `fugit` Cargo features.");
+
+#[cfg(feature = "time")]
+type Duration = embassy_time::Duration;
+
+#[cfg(not(feature = "time"))]
+type Duration = fugit::MillisDurationU64;
+
+#[cfg(feature = "time")]
+fn get_duration(ticks: u64) -> Duration {
+    embassy_time::Duration::from_millis(ticks)
+}
+
+#[cfg(not(feature = "time"))]
+fn get_duration(ticks: u64) -> Duration {
+    fugit::MillisDurationU64::from_ticks(ticks)
+}
+
 use embedded_hal_async::spi::*;
 use lorawan_device::async_device::radio::{PhyRxTx, RfConfig, RxQuality, TxConfig};
 use lorawan_device::async_device::Timings;
@@ -33,6 +60,15 @@ pub trait Board {
         Self: 'a;
 
     fn wait_for_busy_low(&mut self) -> Self::WaitForBusyFuture<'_>;
+
+    #[cfg(not(feature = "time"))]
+    type WaitFuture<'a>: Future<Output = ()>
+    where
+        Self: 'a;
+
+    /// With the `time` feature disabled, you must provide your own implementation of `wait`.
+    #[cfg(not(feature = "time"))]
+    fn wait(&mut self, duration: Duration) -> Self::WaitFuture<'_>;
 }
 
 /// Semtech Sx126x LoRa peripheral
