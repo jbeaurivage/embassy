@@ -25,6 +25,9 @@ where
 {
     // Initialize the radio driver
     pub(super) async fn sub_init(&mut self) -> Result<(), RadioError<BUS>> {
+        // Set CS high before resetting
+        self.board.set_cs_high();
+        
         self.brd_reset().await?;
         self.brd_wakeup().await?;
         self.sub_set_standby(StandbyMode::RC).await?;
