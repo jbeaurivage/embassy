@@ -641,8 +641,6 @@ where
         // Read the address and registers already added to the list
         self.brd_read_registers(Register::RetentionList, &mut buffer).await?;
 
-        defmt::dbg!(buffer);
-
         let number_of_registers = buffer[0];
         for i in 0..number_of_registers {
             // TODO overflows here!!
