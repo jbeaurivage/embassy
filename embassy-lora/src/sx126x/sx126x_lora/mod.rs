@@ -643,7 +643,6 @@ where
 
         let number_of_registers = buffer[0];
         for i in 0..number_of_registers {
-            // TODO overflows here!!
             if register_address
                 == ((buffer[(1 + (2 * i)) as usize] as u16) << 8) | (buffer[(2 + (2 * i)) as usize] as u16)
             {

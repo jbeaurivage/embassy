@@ -26,12 +26,16 @@ where
     // Initialize the radio driver
     pub(super) async fn sub_init(&mut self) -> Result<(), RadioError<BUS>> {
         // Set CS high before resetting
-        self.board.set_cs_high();
+        self.board.set_cs_high().map_err(|_| RadioError::CS)?;
         
         self.brd_reset().await?;
         self.brd_wakeup().await?;
         self.sub_set_standby(StandbyMode::RC).await?;
-        self.brd_io_tcxo_init().await?;
+
+        if B::OSC_MODE.dio3_as_tcxo_ctrl() {
+            self.brd_io_tcxo_init().await?
+        };
+
         self.brd_io_rf_switch_init().await?;
         self.image_calibrated = false;
         Ok(())

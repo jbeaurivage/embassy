@@ -4,7 +4,8 @@ use core::future::Future;
 use defmt::Format;
 
 #[cfg(not(feature = "defmt"))]
-/// Dummy trait to make builds work when `defmt` feature is off. A blanket impl is provided for all types.
+/// Dummy trait to make builds work when `defmt` feature is off. A blanket impl
+/// is provided for all types.
 pub trait Format {}
 #[cfg(not(feature = "defmt"))]
 impl<T> Format for T {}
@@ -37,38 +38,76 @@ use sx126x_lora::LoRa;
 
 use self::sx126x_lora::mod_params::RadioError;
 
+pub enum OscillatorMode {
+    /// Temperature-compensated crystal oscillator
+    Tcxo,
+    /// Crystal oscillator
+    Xosc,
+}
+
+impl OscillatorMode {
+    fn dio3_as_tcxo_ctrl(&self) -> bool {
+        match self {
+            OscillatorMode::Tcxo => true,
+            OscillatorMode::Xosc => false,
+        }
+    }
+}
+
 pub trait Board {
-    type OutputError;
-    fn set_cs_high(&mut self) -> Result<(), Self::OutputError>;
-    fn set_cs_low(&mut self) -> Result<(), Self::OutputError>;
-    fn set_reset_high(&mut self) -> Result<(), Self::OutputError>;
-    fn set_reset_low(&mut self) -> Result<(), Self::OutputError>;
-    fn antenna_tx(&mut self) -> Result<(), Self::OutputError>;
-    fn antenna_rx(&mut self) -> Result<(), Self::OutputError>;
-    fn antenna_sleep(&mut self) -> Result<(), Self::OutputError>;
+    /// Whether or not the SX126x radio is capable of automatically controlling
+    /// the antenna switch via the DIO2 pin.
+    const DIO2_ANTENNA_CONTROL: bool;
 
-    type WaitForDioError;
-    type WaitForDioFuture<'a>: Future<Output = Result<(), Self::WaitForDioError>>
-    where
-        Self: 'a;
+    /// The type of oscillator driving the SX126x chip. If a
+    /// [`Tcxo`](OscillatorMode::Tcxo) is used, the DIO3 pin must be used to
+    /// drive the TXCO.
+    const OSC_MODE: OscillatorMode;
 
-    fn wait_for_dio1_high(&mut self) -> Self::WaitForDioFuture<'_>;
+    /// An error which could happen when trying to change the state of a digital
+    /// output pin. Some HALs will set this type to `()` or
+    /// [`Infallible`](core::convert::Infallible).
+    type DigitalOutputError;
 
+    /// Set SPI CS pin high
+    fn set_cs_high(&mut self) -> Result<(), Self::DigitalOutputError>;
+
+    /// Set SPI CS pin low
+    fn set_cs_low(&mut self) -> Result<(), Self::DigitalOutputError>;
+
+    /// Set RESET pin high
+    fn set_reset_high(&mut self) -> Result<(), Self::DigitalOutputError>;
+
+    /// Set RESET pin low
+    fn set_reset_low(&mut self) -> Result<(), Self::DigitalOutputError>;
+
+    /// Setup antenna in TX mode. If DIO2 is used to control the antenna switch,
+    /// this method could be left as a no-op.
+    fn antenna_tx(&mut self) -> Result<(), Self::DigitalOutputError>;
+
+    /// Setup antenna in RX mode. If DIO2 is used to control the antenna switch,
+    /// this method could be left as a no-op.
+    fn antenna_rx(&mut self) -> Result<(), Self::DigitalOutputError>;
+
+    /// Setup antenna in sleep mode. In some board configurations, the antenna
+    /// can only be in TX or RX mode (and no sleep mode). In those cases, this
+    /// method should be a no-op.
+    fn antenna_sleep(&mut self) -> Result<(), Self::DigitalOutputError>;
+
+    /// An error which could occur when trying to wait for an interrupt to
+    /// happen on DIO1.
+    type WaitForDio1Error;
+    async fn wait_for_dio1_high(&mut self) -> Result<(), Self::WaitForDio1Error>;
+
+    /// An error which could occur when trying to wait for an interrupt to
+    /// happen on BUSY.
     type WaitForBusyError;
-    type WaitForBusyFuture<'a>: Future<Output = Result<(), Self::WaitForBusyError>>
-    where
-        Self: 'a;
+    async fn wait_for_busy_low(&mut self) -> Result<(), Self::WaitForBusyError>;
 
-    fn wait_for_busy_low(&mut self) -> Self::WaitForBusyFuture<'_>;
-
+    /// With the `time` feature disabled, you must provide your own
+    /// implementation of `wait`.
     #[cfg(not(feature = "time"))]
-    type WaitFuture<'a>: Future<Output = ()>
-    where
-        Self: 'a;
-
-    /// With the `time` feature disabled, you must provide your own implementation of `wait`.
-    #[cfg(not(feature = "time"))]
-    fn wait(&mut self, duration: Duration) -> Self::WaitFuture<'_>;
+    async fn wait(&mut self, duration: Duration);
 }
 
 /// Semtech Sx126x LoRa peripheral
