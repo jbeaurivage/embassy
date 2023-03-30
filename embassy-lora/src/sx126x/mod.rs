@@ -234,3 +234,28 @@ where
         }
     }
 }
+
+#[cfg(feature = "rng")]
+impl<B, SPI, BUS> rand_core::RngCore for Sx126xRadio<B, SPI, BUS>
+where
+    B: Board,
+    SPI: SpiBus<u8, Error = BUS> + 'static,
+    BUS: Error + Format + 'static,
+{
+    fn next_u32(&mut self) -> u32 {
+        spin_on::spin_on(self.lora.get_random_value()).unwrap()
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        rand_core::impls::next_u64_via_u32(self)
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        rand_core::impls::fill_bytes_via_next(self, dest)
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+        rand_core::impls::fill_bytes_via_next(self, dest);
+        Ok(())
+    }
+}

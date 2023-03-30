@@ -23,11 +23,13 @@ stm32wl = ["embassy-stm32", "embassy-stm32/subghz"]
 time = ["dep:embassy-time"]
 fugit = ["dep:fugit"]
 defmt = ["dep:defmt", "lorawan/defmt", "lorawan-device/defmt"]
+rng = ["dep:rand_core", "dep:spin_on"]
 
 [dependencies]
 
 defmt = { version = "0.3", optional = true }
 log = { version = "0.4.14", optional = true }
+rand_core = { version = "0.6", optional = true }
 
 embassy-time = { version = "0.1.0", path = "../embassy-time", optional = true }
 fugit = { version = "0.3.6", optional = true }
@@ -37,6 +39,7 @@ embedded-hal-1 = { package = "embedded-hal", version = "=1.0.0-alpha.9" }
 embedded-hal-async = { version = "=0.2.0-alpha.0" }
 embassy-hal-common = { version = "0.1.0", path = "../embassy-hal-common", default-features = false }
 futures = { version = "0.3.17", default-features = false, features = [ "async-await" ] }
+spin_on = { version = "0.1.1", optional = true }
 embedded-hal = { version = "0.2", features = ["unproven"] }
 bit_field = { version = "0.10" }
 
