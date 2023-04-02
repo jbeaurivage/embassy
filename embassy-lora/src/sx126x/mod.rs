@@ -164,6 +164,7 @@ where
 
     fn tx<'m>(&'m mut self, config: TxConfig, buffer: &'m [u8]) -> Self::TxFuture<'m> {
         trace!("TX START");
+        trace!("TX Config: {}", &config);
         async move {
             self.lora
                 .set_tx_config(
@@ -196,6 +197,7 @@ where
 
     fn rx<'m>(&'m mut self, config: RfConfig, receiving_buffer: &'m mut [u8]) -> Self::RxFuture<'m> {
         trace!("RX START");
+        trace!("RX Config: {}", &config);
         async move {
             self.lora
                 .set_rx_config(
