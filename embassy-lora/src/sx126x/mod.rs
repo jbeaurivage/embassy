@@ -165,6 +165,12 @@ where
     fn tx<'m>(&'m mut self, config: TxConfig, buffer: &'m [u8]) -> Self::TxFuture<'m> {
         trace!("TX START");
         trace!("TX Config: {}", &config);
+        let channel = (config.rf.frequency - 902_300_000) / 200_000;
+        if (8..=15).contains(&channel) {
+            defmt::info!("TX on channel {}", channel);
+        } else {
+            defmt::debug!("TX on channel {}", channel);
+        }
         async move {
             self.lora
                 .set_tx_config(
@@ -198,6 +204,7 @@ where
     fn rx<'m>(&'m mut self, config: RfConfig, receiving_buffer: &'m mut [u8]) -> Self::RxFuture<'m> {
         trace!("RX START");
         trace!("RX Config: {}", &config);
+        defmt::debug!("RX freq: {}", &config.frequency);
         async move {
             self.lora
                 .set_rx_config(
