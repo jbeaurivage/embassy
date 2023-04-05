@@ -144,7 +144,7 @@ where
         -50
     }
     fn get_rx_window_duration_ms(&self) -> u32 {
-        1050
+        1000
     }
 }
 
