@@ -141,7 +141,7 @@ where
     BUS: Error + Format + 'static,
 {
     fn get_rx_window_offset_ms(&self) -> i32 {
-        -50
+        -200
     }
     fn get_rx_window_duration_ms(&self) -> u32 {
         1000
@@ -165,12 +165,7 @@ where
     fn tx<'m>(&'m mut self, config: TxConfig, buffer: &'m [u8]) -> Self::TxFuture<'m> {
         trace!("TX START");
         trace!("TX Config: {}", &config);
-        let channel = (config.rf.frequency - 902_300_000) / 200_000;
-        if (8..=15).contains(&channel) {
-            defmt::info!("TX on channel {}", channel);
-        } else {
-            defmt::debug!("TX on channel {}", channel);
-        }
+        defmt::debug!("TX freq: {}", config.rf.frequency);
         async move {
             self.lora
                 .set_tx_config(
