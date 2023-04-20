@@ -141,7 +141,7 @@ where
     BUS: Error + Format + 'static,
 {
     fn get_rx_window_offset_ms(&self) -> i32 {
-        -200
+        -100
     }
     fn get_rx_window_duration_ms(&self) -> u32 {
         1000
